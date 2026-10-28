@@ -1,8 +1,12 @@
 import os
+from typing import Annotated
 from dotenv import load_dotenv
 from api.monitor import monitor
-from mysql.connector import connect, Error
-from langchain_core.tools import tool
+from mysql.connector import connect
+from langchain_core.messages import ToolMessage
+from langchain_core.tools import InjectedToolCallId, tool
+
+from tools.tool_result import error_result
 
 load_dotenv()
 
@@ -34,7 +38,9 @@ def get_db_config():
     return config
 
 @tool
-def list_sql_tables()->str:
+def list_sql_tables(
+    tool_call_id: Annotated[str, InjectedToolCallId] = "",
+) -> str | ToolMessage:
     """
     查询当前库中所有可用的表！
     作用：为了模型识别有哪些可用的表！方便进行后续的自定义sql查询
@@ -43,9 +49,6 @@ def list_sql_tables()->str:
 
     # 埋点,调用工具了告诉前端哪个工具被调用了！！
     monitor.report_tool(tool_name="数据库表名查询工具：list_sql_tables", args={})
-    # 加载数据库信息配置
-    config = get_db_config()
-
     # 1. 创建一个链接
     # 2. 创建cursor
     # 3. cursor执行sql语句
@@ -53,6 +56,8 @@ def list_sql_tables()->str:
     # 5. 释放连接和cursor资源
     # 确保要捕捉异常信息，返回异常提示，避免直接报错！
     try:
+        # 加载数据库信息配置
+        config = get_db_config()
         # 确保资源使用完毕一定释放 with
         with connect(**config) as  conn:
             with conn.cursor() as cursor:
@@ -67,12 +72,20 @@ def list_sql_tables()->str:
                 # [表1,表2,表3]
                 table_names = [table[0] for table in tables]
                 return f"可用的表有：{', '.join(table_names)}"
-    except Error as e:
-        return f"查询出现异常：{str(e)}"
+    except Exception as exc:
+        return error_result(
+            tool_call_id=tool_call_id,
+            tool_name="list_sql_tables",
+            message="数据库查询失败，请检查数据库配置或稍后重试。",
+            error_type=type(exc).__name__,
+        )
 
 
 @tool
-def get_table_data(table_name)->str:
+def get_table_data(
+    table_name,
+    tool_call_id: Annotated[str, InjectedToolCallId] = "",
+) -> str | ToolMessage:
     """
     查询指定表名的数据！当前工具调用之前，必须先调用list_sql_tables完成表名的校验！
     此工具的作用：1.可以完成单表数据的查询 2. 可以为多表查询提供表结果信息（列名&数据格式）
@@ -92,8 +105,6 @@ def get_table_data(table_name)->str:
     # 埋点,调用工具了告诉前端哪个工具被调用了！！
     monitor.report_tool(tool_name="数据库表数据查询工具：get_table_data", args={"table_name":table_name})
 
-    # 获取数据库参数
-    config = get_db_config()
     # 1. 创建一个链接
     # 2. 创建cursor
     # 3. cursor执行sql语句
@@ -101,6 +112,8 @@ def get_table_data(table_name)->str:
     # 5. 释放连接和cursor资源
     # 确保要捕捉异常信息，返回异常提示，避免直接报错！
     try:
+        # 获取数据库参数
+        config = get_db_config()
         # 1. 创建一个链接
         with connect(**config) as  conn:
             # 2. 创建cursor
@@ -133,12 +146,21 @@ def get_table_data(table_name)->str:
                 # '1,张三'\n
                 data_str = "\n".join(results)
                 return f"{header_str}\n{data_str}"
-    except Error as e:
-        return f"查询出现异常：{str(e)}"
+    except Exception as exc:
+        return error_result(
+            tool_call_id=tool_call_id,
+            tool_name="get_table_data",
+            message="数据库查询失败，请检查表名、数据库配置或稍后重试。",
+            error_type=type(exc).__name__,
+            context={"table_name": table_name},
+        )
 
 
 @tool
-def execute_sql_query(query)->str:
+def execute_sql_query(
+    query,
+    tool_call_id: Annotated[str, InjectedToolCallId] = "",
+) -> str | ToolMessage:
     """
     执行自定义查询sql语句！切记：执行之前，需要通过执行 list_sql_tables明确表名！执行get_table_data
     明确表结构和数据格式！
@@ -158,8 +180,6 @@ def execute_sql_query(query)->str:
     # 埋点,调用工具了告诉前端哪个工具被调用了！！
     monitor.report_tool(tool_name="数据库表数据查询工具：execute_sql_query", args={"query":query})
 
-    # 获取数据库参数
-    config = get_db_config()
     # 1. 创建一个链接
     # 2. 创建cursor
     # 3. cursor执行sql语句
@@ -167,6 +187,8 @@ def execute_sql_query(query)->str:
     # 5. 释放连接和cursor资源
     # 确保要捕捉异常信息，返回异常提示，避免直接报错！
     try:
+        # 获取数据库参数
+        config = get_db_config()
         # 1. 创建一个链接
         with connect(**config) as  conn:
             # 2. 创建cursor
@@ -198,15 +220,18 @@ def execute_sql_query(query)->str:
                 # '1,张三'\n
                 data_str = "\n".join(results)
                 return f"{header_str}\n{data_str}"
-    except Error as e:
-        return f"查询出现异常：{str(e)}"
+    except Exception as exc:
+        return error_result(
+            tool_call_id=tool_call_id,
+            tool_name="execute_sql_query",
+            message="数据库查询失败，请检查 SQL、数据库配置或稍后重试。",
+            error_type=type(exc).__name__,
+        )
 
 
 
 if __name__ == "__main__":
     print(execute_sql_query("SELECT * FROM orders WHERE category = '数码电子'"))
-
-
 
 
 

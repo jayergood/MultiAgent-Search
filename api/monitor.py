@@ -109,6 +109,18 @@ class ToolMonitor:
         """报告工具开始执行"""
         self._emit("tool_start", f"开始执行工具: {tool_name}", {"tool_name": tool_name, "args": args})
 
+    def report_tool_error(self, tool_name: str, error_type: str, message: str):
+        """报告工具执行失败，使前端和日志能够区分失败与正常返回。"""
+        self._emit(
+            "tool_error",
+            f"工具执行失败: {tool_name}",
+            {
+                "tool_name": tool_name,
+                "error_type": error_type,
+                "message": message,
+            },
+        )
+
     def report_assistant(self, assistant_name: str, args: Dict[str, Any] = None):
         """报告正在调用的子智能体进度"""
         self._emit("assistant_call", f"正在调用助手: {assistant_name}",

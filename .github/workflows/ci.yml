@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev pkg-config
+
       - name: Cache pip
         uses: actions/cache@v4
         with:
@@ -54,6 +57,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev pkg-config
+
       - name: Install core dependencies
         run: |
           grep -v 'pywin32' requirements.txt > requirements-ci.txt
@@ -62,6 +68,12 @@ jobs:
       - name: Check syntax (compile all .py files)
         run: |
           python -m compileall agent/ api/ tools/ utils/
+
+      - name: Install test runner
+        run: pip install pytest
+
+      - name: Run tests
+        run: python -m pytest tests/ -q
 
   # ============================================
   # Docker 镜像构建验证

@@ -1,13 +1,15 @@
 # 定义一个网络搜索的工具！
 # ======================== 导入核心依赖 ========================
-from typing import Literal
-from langchain_core.tools import tool
+from typing import Annotated, Literal
+from langchain_core.messages import ToolMessage
+from langchain_core.tools import InjectedToolCallId, tool
 from tavily import TavilyClient
 
 import os
 from dotenv import load_dotenv
 
 from api.monitor import monitor
+from tools.tool_result import error_result
 from utils.retry import retry_with_backoff
 
 # ======================== 初始化配置 ========================
@@ -48,7 +50,8 @@ def internet_search(
     topic: Literal["news", "finance", "general"] = "general",
     max_results: int = 5,
     include_raw_content: bool = False,
-):
+    tool_call_id: Annotated[str, InjectedToolCallId] = "",
+) -> str | ToolMessage:
     """
     根据用户问题，进行网络信息搜索！
     注意：主要搜索公开的网络信息！如果指定查询数据库或者rag不能使用此工具！
@@ -70,9 +73,18 @@ def internet_search(
     )
 
     # 带重试的搜索调用（指数退避，最多 3 次）
-    return _search_with_retry(
-        query=query,
-        topic=topic,
-        max_results=max_results,
-        include_raw_content=include_raw_content,
-    )
+    try:
+        return _search_with_retry(
+            query=query,
+            topic=topic,
+            max_results=max_results,
+            include_raw_content=include_raw_content,
+        )
+    except Exception as exc:
+        return error_result(
+            tool_call_id=tool_call_id,
+            tool_name="internet_search",
+            message="网络搜索失败，请稍后重试或改用其他信息来源。",
+            error_type=type(exc).__name__,
+            context={"query": query, "topic": topic},
+        )

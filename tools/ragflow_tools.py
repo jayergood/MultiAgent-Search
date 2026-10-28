@@ -1,11 +1,16 @@
 #  get_assistant_list 获取聊天助手和知识库信息
 #  create_ask_delete  创建提问和删除会话获取rag查询结果
-from langchain_core.tools import tool
+from typing import Annotated
+
+from langchain_core.messages import ToolMessage
+from langchain_core.tools import InjectedToolCallId, tool
+
 # 导入依赖
 from ragflow_sdk import RAGFlow #链接rag服务的客户端
 
 from api.monitor import monitor
 from rawflow.rag_config import _load_ragflow_env
+from tools.tool_result import error_result
 
 # 创建一个ragflow的客户端
 api_key , base_url =_load_ragflow_env()
@@ -15,7 +20,9 @@ ragflow_client = RAGFlow(api_key=api_key,base_url=base_url)
 
 # 1. 查询现在知识库中有哪些聊天助手和对应知识库的信息 （方便我们知道rag可以给我们提供哪些数据）
 @tool
-def get_assistant_list() -> str:
+def get_assistant_list(
+    tool_call_id: Annotated[str, InjectedToolCallId] = "",
+) -> str | ToolMessage:
     """
     调用此工具，可以查询ragflow服务器中有哪些助手和助手关联的知识库信息！
     供模型参考，可以从哪个助手获取对应的内部文档信息！
@@ -49,12 +56,21 @@ def get_assistant_list() -> str:
             # 拼接格式: 助手名称 + 介绍 + 关联知识库列表
             count_chat_info += f"助手名称:{chat.name};功能介绍：{chat.description}; 关联的知识库：{'、'.join(dataset_names)} \n"
         return count_chat_info
-    except Exception as e:
-        return f"查询助手信息异常，无可用助手,异常信息:{str(e)}"
+    except Exception as exc:
+        return error_result(
+            tool_call_id=tool_call_id,
+            tool_name="get_assistant_list",
+            message="知识库助手查询失败，请稍后重试。",
+            error_type=type(exc).__name__,
+        )
 
 # 2. 对某个助手进行提问（创建会话 -》 提问 -》 删除会话）
 @tool
-def create_ask_delete(chat_name,question)->str:
+def create_ask_delete(
+    chat_name,
+    question,
+    tool_call_id: Annotated[str, InjectedToolCallId] = "",
+) -> str | ToolMessage:
     """
     想某个助手，创建单次会话进行提问，提问完毕以后会关闭会话！
     主要查询ragflow中相关的信息！
@@ -87,8 +103,14 @@ def create_ask_delete(chat_name,question)->str:
         use_chat.delete_sessions(ids=[session.id])
         # 6. 返回结果
         return result
-    except Exception as e:
-        return f"提问失败，错误原因：{str(e)}"
+    except Exception as exc:
+        return error_result(
+            tool_call_id=tool_call_id,
+            tool_name="create_ask_delete",
+            message="知识库提问失败，请稍后重试。",
+            error_type=type(exc).__name__,
+            context={"chat_name": chat_name},
+        )
 
 # if __name__ == '__main__':
 #     # print(get_assistant_list())

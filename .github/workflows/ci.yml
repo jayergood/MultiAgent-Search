@@ -73,7 +73,7 @@ jobs:
         run: pip install pytest
 
       - name: Run tests
-        run: pytest tests/ -q
+        run: python -m pytest tests/ -q
 
   # ============================================
   # Docker 镜像构建验证
